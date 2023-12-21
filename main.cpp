@@ -1,4 +1,3 @@
-#include <string.h>
 #define WIN32_LEAN_AND_MEAN
 
 #include <winsock.h>
@@ -15,6 +14,8 @@
 #define DEFAULT_PORT "27015"
 
 using namespace std;
+
+const char *handleRequest(string request);
 
 int main(void) {
 	// Documentation obtained from https://learn.microsoft.com/en-us/windows/win32/winsock/
@@ -93,7 +94,9 @@ int main(void) {
 		ret = recv(ClientSocket, recvbuf, recvbuflen, 0);
 		if (ret > 0) {
 			cout << "Bytes recieved: " << ret << endl;
-			sendret = send(ClientSocket, recvbuf, ret, 0);
+			cout << "The message was: " << recvbuf << endl;
+			const char *sendbuf = handleRequest(recvbuf);
+			sendret = send(ClientSocket, sendbuf, ret, 0);
 			if (sendret == SOCKET_ERROR) {
 				long error_no = WSAGetLastError();
 				closesocket(ClientSocket);
@@ -101,6 +104,7 @@ int main(void) {
 				throw runtime_error("Send failed" + to_string(error_no));
 			}
 			cout << "Bytes sent: " << sendret << endl;
+
 		} else if (ret == 0)
 			cout << "Closing connection..." << endl;
 		else {
@@ -125,4 +129,15 @@ int main(void) {
 	WSACleanup();
 
 	return 0;
+}
+
+const char *handleRequest(string request) {
+	// Decode the request
+	if (request.substr(0, 3) == "GET") {
+		cout << "This was a GET request" << endl;
+		return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello, World!";
+	} else {
+		cout << "Some other request";
+		return "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found";
+	}
 }
