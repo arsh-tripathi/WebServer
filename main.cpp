@@ -1,3 +1,4 @@
+#include <sstream>
 #define WIN32_LEAN_AND_MEAN
 
 #include <winsock.h>
@@ -136,10 +137,15 @@ string handleRequest(string request, int &ret) {
 	// Decode the request
 	if (request.substr(0, 3) == "GET") {
 		cout << "This was a GET request" << endl;
-		ret = 0;
-		return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\nHello World";
+		ifstream in{"index.html"};
+		if (in.fail()) return "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/html\r\n\r\n<h1>404 NOT FOUND</h1>";
+		stringstream buffer;
+		buffer << in.rdbuf();
+		return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n" + buffer.str();
 	} else {
 		cout << "Some other request";
+		cout << request;
+		ret = 0;
 		return "";
 	}
 }
