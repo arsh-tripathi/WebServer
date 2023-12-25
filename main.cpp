@@ -4,6 +4,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -15,7 +16,7 @@
 
 using namespace std;
 
-const char *handleRequest(string request);
+string handleRequest(string request, int &ret);
 
 int main(void) {
 	// Documentation obtained from https://learn.microsoft.com/en-us/windows/win32/winsock/
@@ -95,8 +96,8 @@ int main(void) {
 		if (ret > 0) {
 			cout << "Bytes recieved: " << ret << endl;
 			cout << "The message was: " << recvbuf << endl;
-			const char *sendbuf = handleRequest(recvbuf);
-			sendret = send(ClientSocket, sendbuf, ret, 0);
+			string sendbuf = handleRequest(string(recvbuf), ret);
+			sendret = send(ClientSocket, sendbuf.data(), sendbuf.size(), 0);
 			if (sendret == SOCKET_ERROR) {
 				long error_no = WSAGetLastError();
 				closesocket(ClientSocket);
@@ -131,13 +132,14 @@ int main(void) {
 	return 0;
 }
 
-const char *handleRequest(string request) {
+string handleRequest(string request, int &ret) {
 	// Decode the request
 	if (request.substr(0, 3) == "GET") {
 		cout << "This was a GET request" << endl;
-		return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello, World!";
+		ret = 0;
+		return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\nHello World";
 	} else {
 		cout << "Some other request";
-		return "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found";
+		return "";
 	}
 }
