@@ -1,10 +1,15 @@
+#include <corecrt.h>
+
 #include <sstream>
+
 #define WIN32_LEAN_AND_MEAN
 
 #include <winsock.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <csignal>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -18,9 +23,15 @@
 using namespace std;
 
 string handleRequest(string request, int &ret);
+void terminationHandler(int signum) {
+	cout << "Closing the server, interrupt signal received";
+	WSACleanup();
+	exit(signum);
+}
 
 int main(void) {
 	// Documentation obtained from https://learn.microsoft.com/en-us/windows/win32/winsock/
+	signal(SIGINT, terminationHandler);
 	cout << "Initializing winsock" << endl;
 	WSADATA wsadata;
 	int ret = 0;
@@ -79,24 +90,24 @@ int main(void) {
 
 	SOCKET ClientSocket = INVALID_SOCKET;
 
-	ClientSocket = accept(ListenSocket, NULL, NULL);
-	if (ClientSocket == INVALID_SOCKET) {
-		long error_no = WSAGetLastError();
-		closesocket(ListenSocket);
-		WSACleanup();
-		throw runtime_error("Accept failed: " + to_string(error_no));
-	}
+	while (true) {
+		ClientSocket = accept(ListenSocket, NULL, NULL);
+		if (ClientSocket == INVALID_SOCKET) {
+			long error_no = WSAGetLastError();
+			closesocket(ListenSocket);
+			WSACleanup();
+			throw runtime_error("Accept failed: " + to_string(error_no));
+		}
 
-	cout << "Receiving and sending Data" << endl;
-	char recvbuf[DEFAULT_BUFFLEN];
-	int sendret = 0;
-	int recvbuflen = DEFAULT_BUFFLEN;
+		cout << "Receiving and sending Data" << endl;
+		char recvbuf[DEFAULT_BUFFLEN];
+		int sendret = 0;
+		int recvbuflen = DEFAULT_BUFFLEN;
 
-	do {
 		ret = recv(ClientSocket, recvbuf, recvbuflen, 0);
 		if (ret > 0) {
-			cout << "Bytes recieved: " << ret << endl;
-			cout << "The message was: " << recvbuf << endl;
+			/* cout << "Bytes recieved: " << ret << endl; */
+			/* cout << "The message was: " << recvbuf << endl; */
 			string sendbuf = handleRequest(string(recvbuf), ret);
 			sendret = send(ClientSocket, sendbuf.data(), sendbuf.size(), 0);
 			if (sendret == SOCKET_ERROR) {
@@ -105,7 +116,7 @@ int main(void) {
 				WSACleanup();
 				throw runtime_error("Send failed" + to_string(error_no));
 			}
-			cout << "Bytes sent: " << sendret << endl;
+			/* cout << "Bytes sent: " << sendret << endl; */
 
 		} else if (ret == 0)
 			cout << "Closing connection..." << endl;
@@ -115,37 +126,52 @@ int main(void) {
 			WSACleanup();
 			throw runtime_error("Recieve failed " + to_string(error_no));
 		}
-	} while (ret > 0);
 
-	cout << "Disconnecting Socket" << endl;
+		cout << "Disconnecting Socket" << endl;
 
-	ret = shutdown(ClientSocket, SD_SEND);
-	if (ret == SOCKET_ERROR) {
-		long error_no = WSAGetLastError();
+		ret = shutdown(ClientSocket, SD_SEND);
+		if (ret == SOCKET_ERROR) {
+			long error_no = WSAGetLastError();
+			closesocket(ClientSocket);
+			WSACleanup();
+			throw runtime_error("shutdown failed: " + to_string(error_no));
+		}
+
 		closesocket(ClientSocket);
-		WSACleanup();
-		throw runtime_error("shutdown failed: " + to_string(error_no));
 	}
-
-	closesocket(ClientSocket);
-	WSACleanup();
-
-	return 0;
 }
 
 string handleRequest(string request, int &ret) {
 	// Decode the request
-	if (request.substr(0, 3) == "GET") {
+	istringstream req{request};
+	string word;
+	req >> word;
+	if (req.fail()) return "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/html\r\n\r\n<h1>404 NOT FOUND</h1>";
+	if (word == "GET") {
 		cout << "This was a GET request" << endl;
-		ifstream in{"index.html"};
+		req >> word;
+		string file = word.substr(1);
+		if (file == "") file = "index.html";
+		ifstream in{file};
 		if (in.fail()) return "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/html\r\n\r\n<h1>404 NOT FOUND</h1>";
 		stringstream buffer;
 		buffer << in.rdbuf();
 		return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n" + buffer.str();
+	} else if (word == "POST") {
+		// the implentation for this is dependent on the end case
+		return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+	} else if (word == "PUT") {
+		req >> word;
+		ofstream resource{word};
+		while (word != "") getline(req, word);
+		resource << req.rdbuf();
+		return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+	} else if (word == "DELETE") {
+		req >> word;
+		if (remove(word.c_str()) != 0) return "HTTP/1.1 404 ERROR\r\nContent-Type: text/plain\r\n\r\n";
+		return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
 	} else {
-		cout << "Some other request";
-		cout << request;
-		ret = 0;
+		cout << "Some other request" << endl;
 		return "";
 	}
 }
